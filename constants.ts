@@ -1,3 +1,4 @@
+
 import { User, Category, Transaction, TransactionType, Baby, CreditCardAccount, LoanAccount, SavingsGoal } from './types';
 
 export const CURRENT_USER_ID = 'user_1';
@@ -8,6 +9,7 @@ export const MOCK_USERS: User[] = [
     name: 'Alex (我)', 
     avatar: 'https://picsum.photos/100/100', 
     isFamilyAdmin: true,
+    isPremium: false,
     permissions: { canView: true, canEdit: true }
   },
   { 
@@ -15,6 +17,7 @@ export const MOCK_USERS: User[] = [
     name: 'Sarah', 
     avatar: 'https://picsum.photos/101/101', 
     isFamilyAdmin: false,
+    isPremium: false,
     permissions: { canView: true, canEdit: true }
   }
 ];

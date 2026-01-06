@@ -1,3 +1,4 @@
+
 import { 
   Home, 
   PieChart, 
@@ -42,7 +43,22 @@ import {
   Trophy,
   PiggyBank,
   Lock,
-  Pencil
+  Pencil,
+  ArrowLeftRight,
+  Eye,
+  EyeOff,
+  QrCode,
+  ScanLine,
+  AlertCircle,
+  Bell,
+  CalendarClock,
+  MoreHorizontal,
+  Edit3,
+  Clock,
+  StickyNote,
+  MessageSquare,
+  PartyPopper,
+  Heart
 } from 'lucide-react';
 
 export {
@@ -89,5 +105,20 @@ export {
   Trophy,
   PiggyBank,
   Lock,
-  Pencil
+  Pencil,
+  ArrowLeftRight,
+  Eye,
+  EyeOff,
+  QrCode,
+  ScanLine,
+  AlertCircle,
+  Bell,
+  CalendarClock,
+  MoreHorizontal,
+  Edit3,
+  Clock,
+  StickyNote,
+  MessageSquare,
+  PartyPopper,
+  Heart
 };

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Loader2, Sparkles, CheckCircle2, TrendingUp, TrendingDown, CreditCard, ArrowRight, Keyboard, Send } from './Icons';
+import { Mic, Loader2, Sparkles, CheckCircle2, Keyboard, Send, AlertCircle } from './Icons';
 import { parseTransaction } from '../services/geminiService';
 import { Transaction, TransactionType } from '../types';
 
@@ -18,9 +19,10 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
   const [mode, setMode] = useState<'VOICE' | 'TEXT'>('VOICE');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>("点击 说话");
+  const [statusMessage, setStatusMessage] = useState<string>("点击麦克风 或 使用键盘语音");
   const [textInput, setTextInput] = useState('');
   const [tempTranscript, setTempTranscript] = useState(''); // Live transcript feedback
+  const [browserSupport, setBrowserSupport] = useState(true);
   
   // Store the full result for display
   const [successResult, setSuccessResult] = useState<{
@@ -53,7 +55,6 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            // Final result
             const finalTranscript = event.results[i][0].transcript;
             setTempTranscript(finalTranscript);
             handleVoiceResult(finalTranscript);
@@ -69,6 +70,8 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         setIsRecording(false);
         if (event.error === 'not-allowed') {
           setStatusMessage("请允许麦克风权限");
+        } else if (event.error === 'network') {
+          setStatusMessage("网络连接失败 (可能是浏览器服务受限)");
         } else {
           setStatusMessage("识别失败，请重试");
         }
@@ -76,22 +79,22 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
 
       recognition.onend = () => {
         setIsRecording(false);
-        // If we didn't get a final result (e.g. user stopped manually), check temp
         if (statusMessage === "正在聆听...") {
-             setStatusMessage("点击 说话");
+             setStatusMessage("点击说话");
         }
       };
 
       recognitionRef.current = recognition;
     } else {
-      setStatusMessage("您的浏览器不支持语音识别，请使用键盘输入");
+      setBrowserSupport(false);
+      setStatusMessage("当前浏览器不支持原生语音，请使用键盘输入");
       setMode('TEXT');
     }
   }, []);
 
   const handleVoiceResult = async (text: string) => {
       stopRecording();
-      setTempTranscript(text); // Ensure final text is shown
+      setTempTranscript(text); 
       await processInput(text);
   };
 
@@ -104,11 +107,11 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         try {
             recognitionRef.current.start();
         } catch (e) {
-            // Sometimes it throws if already started
             console.warn("Recognition start error:", e);
         }
     } else {
-        alert("浏览器不支持语音识别");
+        alert("您的浏览器不支持原生语音识别，建议使用输入法自带的语音键。");
+        setMode('TEXT');
     }
   };
 
@@ -119,24 +122,25 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
     }
   };
 
-  // --- Text Handlers ---
-
   const handleTextSubmit = async () => {
     if (!textInput.trim()) return;
     await processInput(textInput);
     setTextInput('');
   };
 
-  // --- Common Processing ---
-
   const processInput = async (text: string) => {
     if (!text.trim()) return;
     
     setIsProcessing(true);
-    setStatusMessage("DeepSeek 思考中...");
+    setStatusMessage("DeepSeek 正在分析账单...");
     
     try {
       const result = await parseTransaction(text);
+
+      if (result.amount === 0) {
+          setStatusMessage("未能识别到金额，请重试 (例如: '买菜30元')");
+          return;
+      }
 
       onAddTransaction({
         amount: result.amount,
@@ -154,10 +158,10 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         category: result.category,
         note: result.note
       });
-      setStatusMessage(mode === 'VOICE' ? "点击 说话" : "发送");
+      setStatusMessage(mode === 'VOICE' ? "点击说话" : "发送");
     } catch (error) {
       console.error(error);
-      setStatusMessage("AI 解析失败，请重试");
+      setStatusMessage("解析失败，请检查网络或重试");
     } finally {
       setIsProcessing(false);
     }
@@ -174,7 +178,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-6 bg-gradient-to-b from-slate-50 to-white relative">
+    <div className="flex flex-col items-center justify-center h-full p-6 bg-gradient-to-b from-slate-50 to-white relative overflow-y-auto">
       
       {successResult ? (
         <div className="w-full max-w-sm animate-in zoom-in-95 duration-300">
@@ -186,7 +190,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
                </div>
                
                <h3 className="text-2xl font-bold text-slate-800 mb-2">已自动记账</h3>
-               <p className="text-slate-400 text-sm mb-8">交易已保存到您的账本</p>
+               <p className="text-slate-400 text-sm mb-8">AI 智能提取详情</p>
                
                <div className="bg-slate-50 rounded-3xl p-6 mb-8">
                    <div className="flex flex-col items-center gap-2 mb-4">
@@ -210,6 +214,12 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         </div>
       ) : (
         <div className="flex flex-col items-center w-full max-w-md">
+          {/* DeepSeek Branding */}
+          <div className="flex items-center gap-2 mb-8 bg-indigo-50 px-4 py-1.5 rounded-full">
+               <Sparkles size={14} className="text-indigo-600" />
+               <span className="text-xs font-bold text-indigo-700">Powered by DeepSeek AI</span>
+          </div>
+
           <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 relative">
             {isProcessing ? (
                 <div className="absolute inset-0 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin"></div>
@@ -221,15 +231,15 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
             <Sparkles className={`w-10 h-10 ${isProcessing ? 'text-indigo-400' : isRecording ? 'text-red-500' : 'text-indigo-600'}`} />
           </div>
           
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">DeepSeek 智能助手</h2>
-          <p className="text-slate-500 text-center mb-12 text-sm min-h-[40px]">
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">AI 智能记账</h2>
+          <p className="text-slate-500 text-center mb-8 text-sm min-h-[40px] px-4">
              {tempTranscript ? (
                  <span className="text-slate-800 font-medium animate-pulse">"{tempTranscript}"</span>
              ) : (
                  mode === 'VOICE' ? (
-                    <>点击下方按钮说出消费 <br/><span className="text-slate-400 text-xs mt-1 block">"刚在淘宝花了299买鞋，用花呗付的"</span></>
+                    <>点击下方按钮说话 <br/><span className="text-slate-400 text-xs mt-2 block bg-slate-50 py-1 px-2 rounded-lg">提示：国内安卓请优先使用下方“切换键盘”进行语音输入</span></>
                  ) : (
-                    <>输入交易详情 <br/><span className="text-slate-400 text-xs mt-1 block">"收到工资一万五"</span></>
+                    <>输入交易详情 <br/><span className="text-slate-400 text-xs mt-1 block">"刚还了五千块房贷，下个月15号到期"</span></>
                  )
              )}
           </p>
@@ -256,15 +266,20 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
                   </button>
               ) : (
                   <div className="w-full flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4">
-                      <input 
-                        type="text" 
-                        value={textInput}
-                        onChange={(e) => setTextInput(e.target.value)}
-                        placeholder="例如: 早餐花了15元..."
-                        onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
-                        autoFocus
-                        className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-5 py-4 text-slate-800 font-medium focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all shadow-inner"
-                      />
+                      <div className="flex-1 relative">
+                        <input 
+                            type="text" 
+                            value={textInput}
+                            onChange={(e) => setTextInput(e.target.value)}
+                            placeholder="点击右侧麦克风图标使用输入法语音..."
+                            onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+                            autoFocus
+                            className="w-full bg-slate-100 border border-slate-200 rounded-2xl pl-5 pr-10 py-4 text-slate-800 font-medium focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all shadow-inner"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                            <Mic size={18} className="opacity-50" />
+                        </div>
+                      </div>
                       <button 
                         onClick={handleTextSubmit}
                         disabled={!textInput.trim() || isProcessing}
@@ -276,19 +291,26 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
               )}
           </div>
 
-          <div className="mt-8 flex items-center gap-6">
+          <div className="mt-8 flex items-center gap-4">
               <button 
                 onClick={() => setMode(mode === 'VOICE' ? 'TEXT' : 'VOICE')}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-slate-200 text-slate-500 text-sm font-bold shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-all"
+                className="flex items-center gap-2 px-6 py-3 rounded-full bg-white border border-slate-200 text-slate-600 text-sm font-bold shadow-sm hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-100 transition-all"
               >
-                  {mode === 'VOICE' ? <Keyboard size={16} /> : <Mic size={16} />}
-                  <span>{mode === 'VOICE' ? '切换键盘' : '切换语音'}</span>
+                  {mode === 'VOICE' ? <Keyboard size={18} /> : <Mic size={18} />}
+                  <span>{mode === 'VOICE' ? '切换键盘输入' : '切换网页语音'}</span>
               </button>
           </div>
           
-          <p className={`mt-6 text-sm font-bold transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-300'}`}>
-            {statusMessage}
-          </p>
+          <div className="mt-6 text-center">
+             <p className={`text-sm font-bold transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-300'}`}>
+                {statusMessage}
+             </p>
+             {mode === 'VOICE' && !browserSupport && (
+                 <p className="text-[10px] text-amber-500 mt-2 flex items-center justify-center gap-1">
+                     <AlertCircle size={10} /> 推荐使用 Chrome 浏览器或切换到键盘模式
+                 </p>
+             )}
+          </div>
         </div>
       )}
     </div>
