@@ -1,9 +1,27 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AiParsingResult, TransactionType, Category } from "../types";
 
-// Initialize Gemini Client
-// The API key is obtained from the environment variable process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get dynamic client configuration
+// This is crucial for the "Test Version" to allow users to input their own keys/proxies at runtime
+// without needing to rebuild the app.
+const getClient = () => {
+    let apiKey = process.env.API_KEY;
+    let baseUrl = process.env.GEMINI_BASE_URL;
+
+    // Try to get from LocalStorage (User overrides)
+    if (typeof window !== 'undefined') {
+        const storedKey = localStorage.getItem('gf_user_api_key');
+        const storedUrl = localStorage.getItem('gf_user_base_url');
+        if (storedKey) apiKey = storedKey;
+        if (storedUrl) baseUrl = storedUrl;
+    }
+
+    return new GoogleGenAI({ 
+        apiKey: apiKey,
+        // Add Base URL support for reverse proxy (Cloudflare/Nginx)
+        baseUrl: baseUrl || undefined 
+    });
+};
 
 // 本地规则解析器（作为 AI 的兜底方案）
 const mockLocalParse = (text: string): AiParsingResult => {
@@ -16,8 +34,6 @@ const mockLocalParse = (text: string): AiParsingResult => {
     let category = Category.OTHER;
 
     // 关键词库
-    // Fix: Changed type from Record<string, Category> to Record<string, string> 
-    // because values are regex strings, not Category enums.
     const keywords: Record<string, string> = {
         [Category.FOOD]: '吃|饭|餐|麦当劳|肯德基|外卖|零食|酒|菜|饿|饮',
         [Category.TRANSPORT]: '车|打车|地铁|公交|油|停车|路费',
@@ -72,16 +88,41 @@ const mockLocalParse = (text: string): AiParsingResult => {
     };
 };
 
-export const parseTransaction = async (textInput: string): Promise<AiParsingResult> => {
-  if (!process.env.API_KEY) {
+export const parseTransaction = async (textInput: string, imageBase64?: string): Promise<AiParsingResult> => {
+  const ai = getClient();
+  
+  // Check if we have a key (either env or stored)
+  const hasKey = process.env.API_KEY || (typeof window !== 'undefined' && localStorage.getItem('gf_user_api_key'));
+
+  if (!hasKey) {
       console.warn("No API Key configured, using local fallback.");
       return mockLocalParse(textInput);
   }
 
   try {
+    let contents: any = `Current Time: ${new Date().toISOString()}. Analyze this transaction.`;
+    
+    if (imageBase64) {
+        // Multimodal input
+        contents = [
+            {
+                inlineData: {
+                    mimeType: "image/jpeg",
+                    data: imageBase64
+                }
+            },
+            {
+                text: "Analyze this receipt/image. Extract the total amount, infer the category, determine the transaction type, and write a short note summary. Return JSON."
+            }
+        ];
+    } else {
+        // Text-only input
+        contents = `Current Time: ${new Date().toISOString()}. Analyze this transaction text: "${textInput}"`;
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Current Time: ${new Date().toISOString()}. Analyze this transaction text: "${textInput}"`,
+      model: imageBase64 ? 'gemini-2.5-flash-image' : 'gemini-3-flash-preview', // Use vision model for images
+      contents: contents,
       config: {
         systemInstruction: "You are a family accountant. Extract transaction details into JSON.",
         responseMimeType: "application/json",
@@ -103,17 +144,24 @@ export const parseTransaction = async (textInput: string): Promise<AiParsingResu
 
     const result = response.text ? JSON.parse(response.text) : null;
     if (result) {
+        // Ensure date is valid ISO string if AI returns something else
+        if (!result.date || isNaN(Date.parse(result.date))) {
+            result.date = new Date().toISOString();
+        }
         return result as AiParsingResult;
     }
     throw new Error("Empty response from Gemini");
   } catch (e) {
     console.warn("AI Parsing failed, using local fallback.", e);
-    return mockLocalParse(textInput);
+    return mockLocalParse(textInput || "无法识别");
   }
 };
 
 export const getFinancialAdvice = async (summary: string): Promise<string> => {
-  if (!process.env.API_KEY) return "AI 助手未连接（请配置 API Key）。建议您：1. 检查每月固定支出；2. 为大额消费设定预算。";
+  const ai = getClient();
+  const hasKey = process.env.API_KEY || (typeof window !== 'undefined' && localStorage.getItem('gf_user_api_key'));
+  
+  if (!hasKey) return "AI 助手未连接（请配置 API Key）。建议您：1. 检查每月固定支出；2. 为大额消费设定预算。";
 
   try {
     const response = await ai.models.generateContent({

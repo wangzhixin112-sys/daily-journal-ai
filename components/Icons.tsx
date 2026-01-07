@@ -59,7 +59,10 @@ import {
   MessageSquare,
   PartyPopper,
   Heart,
-  Calculator
+  Calculator,
+  Camera,
+  Image as ImageIcon,
+  Key
 } from 'lucide-react';
 
 export {
@@ -122,5 +125,8 @@ export {
   MessageSquare,
   PartyPopper,
   Heart,
-  Calculator
+  Calculator,
+  Camera,
+  ImageIcon,
+  Key
 };

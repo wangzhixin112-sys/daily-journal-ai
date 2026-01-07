@@ -2,6 +2,7 @@
   "name": "每日记",
   "description": "下一代家庭记账软件，支持 AI 语音识别、智能预算和家庭共享。",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

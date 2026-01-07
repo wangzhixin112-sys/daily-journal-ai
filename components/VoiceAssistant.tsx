@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Loader2, Sparkles, CheckCircle2, Keyboard, Send, AlertCircle, Lock } from './Icons';
+// Fix: Import ImageIcon directly as 'Image' is not exported from Icons module, only ImageIcon is.
+import { Mic, Loader2, Sparkles, CheckCircle2, Keyboard, Send, AlertCircle, Lock, Camera, ImageIcon, X } from './Icons';
 import { parseTransaction } from '../services/geminiService';
 import { Transaction, TransactionType } from '../types';
 
@@ -16,13 +17,14 @@ interface IWindow extends Window {
 }
 
 export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserId, readOnly = false }) => {
-  const [mode, setMode] = useState<'VOICE' | 'TEXT'>('VOICE');
+  const [mode, setMode] = useState<'VOICE' | 'TEXT' | 'IMAGE'>('VOICE');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>("点击麦克风 或 使用键盘语音");
+  const [statusMessage, setStatusMessage] = useState<string>("点击麦克风 或 使用键盘/图片");
   const [textInput, setTextInput] = useState('');
   const [tempTranscript, setTempTranscript] = useState(''); // Live transcript feedback
   const [browserSupport, setBrowserSupport] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   // Store the full result for display
   const [successResult, setSuccessResult] = useState<{
@@ -33,6 +35,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
   } | null>(null);
   
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -129,16 +132,31 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
     setTextInput('');
   };
 
-  const processInput = async (text: string) => {
-    if (!text.trim()) return;
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              const base64String = reader.result as string;
+              // Remove data url prefix for Gemini API
+              const base64Data = base64String.split(',')[1];
+              setSelectedImage(base64String); // For display
+              processInput("", base64Data);
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const processInput = async (text: string, imageBase64?: string) => {
+    if (!text.trim() && !imageBase64) return;
     
     setIsProcessing(true);
-    setStatusMessage("DeepSeek 正在分析账单...");
+    setStatusMessage(imageBase64 ? "正在识别小票/图片..." : "DeepSeek 正在分析账单...");
     
     try {
-      const result = await parseTransaction(text);
+      const result = await parseTransaction(text, imageBase64);
 
-      if (result.amount === 0) {
+      if (result.amount === 0 && !imageBase64) {
           setStatusMessage("未能识别到金额，请重试 (例如: '买菜30元')");
           return;
       }
@@ -160,9 +178,11 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         note: result.note
       });
       setStatusMessage(mode === 'VOICE' ? "点击说话" : "发送");
+      setSelectedImage(null); // Clear image after processing
     } catch (error) {
       console.error(error);
       setStatusMessage("解析失败，请检查网络或重试");
+      setSelectedImage(null);
     } finally {
       setIsProcessing(false);
     }
@@ -230,10 +250,10 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
           {/* DeepSeek Branding */}
           <div className="flex items-center gap-2 mb-8 bg-indigo-50 px-4 py-1.5 rounded-full">
                <Sparkles size={14} className="text-indigo-600" />
-               <span className="text-xs font-bold text-indigo-700">Powered by DeepSeek AI</span>
+               <span className="text-xs font-bold text-indigo-700">Powered by Gemini AI</span>
           </div>
 
-          <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 relative">
+          <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 relative transition-all duration-500">
             {isProcessing ? (
                 <div className="absolute inset-0 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin"></div>
             ) : isRecording ? (
@@ -241,16 +261,32 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
             ) : (
                 <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-20"></div>
             )}
-            <Sparkles className={`w-10 h-10 ${isProcessing ? 'text-indigo-400' : isRecording ? 'text-red-500' : 'text-indigo-600'}`} />
+            
+            {/* Center Icon based on Mode */}
+            {isProcessing ? (
+               <Loader2 className="text-indigo-400 w-10 h-10 animate-spin" />
+            ) : selectedImage ? (
+               <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-indigo-200">
+                   <img src={selectedImage} alt="Preview" className="w-full h-full object-cover opacity-80" />
+               </div>
+            ) : (
+               mode === 'VOICE' ? <Mic className={`w-10 h-10 ${isRecording ? 'text-red-500' : 'text-indigo-600'}`} /> : 
+               mode === 'IMAGE' ? <Camera className="w-10 h-10 text-indigo-600" /> :
+               <Keyboard className="w-10 h-10 text-indigo-600" />
+            )}
           </div>
           
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">AI 智能记账</h2>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+              {mode === 'IMAGE' ? '拍照记账' : 'AI 智能记账'}
+          </h2>
           <p className="text-slate-500 text-center mb-8 text-sm min-h-[40px] px-4">
              {tempTranscript ? (
                  <span className="text-slate-800 font-medium animate-pulse">"{tempTranscript}"</span>
              ) : (
                  mode === 'VOICE' ? (
                     <>点击下方按钮说话 <br/><span className="text-slate-400 text-xs mt-2 block bg-slate-50 py-1 px-2 rounded-lg">提示：国内安卓请优先使用下方“切换键盘”进行语音输入</span></>
+                 ) : mode === 'IMAGE' ? (
+                    <>上传购物小票或发票 <br/><span className="text-slate-400 text-xs mt-1 block">AI 自动提取商家、金额和分类</span></>
                  ) : (
                     <>输入交易详情 <br/><span className="text-slate-400 text-xs mt-1 block">"刚还了五千块房贷，下个月15号到期"</span></>
                  )
@@ -258,7 +294,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
           </p>
 
           <div className="w-full relative h-40 flex items-center justify-center">
-              {mode === 'VOICE' ? (
+              {mode === 'VOICE' && (
                   <button
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isProcessing}
@@ -271,27 +307,22 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
                           : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105 ring-8 ring-indigo-50 shadow-indigo-200 active:scale-95'}
                     `}
                   >
-                    {isProcessing ? (
-                      <Loader2 className="text-slate-400 animate-spin w-8 h-8" />
-                    ) : (
-                      <Mic className="text-white w-10 h-10" />
-                    )}
+                    <Mic className="text-white w-10 h-10" />
                   </button>
-              ) : (
+              )}
+
+              {mode === 'TEXT' && (
                   <div className="w-full flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4">
                       <div className="flex-1 relative">
                         <input 
                             type="text" 
                             value={textInput}
                             onChange={(e) => setTextInput(e.target.value)}
-                            placeholder="点击右侧麦克风图标使用输入法语音..."
+                            placeholder="输入交易信息..."
                             onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
                             autoFocus
                             className="w-full bg-slate-100 border border-slate-200 rounded-2xl pl-5 pr-10 py-4 text-slate-800 font-medium focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all shadow-inner"
                         />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                            <Mic size={18} className="opacity-50" />
-                        </div>
                       </div>
                       <button 
                         onClick={handleTextSubmit}
@@ -302,15 +333,49 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
                       </button>
                   </div>
               )}
+
+              {mode === 'IMAGE' && (
+                  <div className="w-full flex justify-center animate-in fade-in slide-in-from-bottom-4">
+                      <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          ref={fileInputRef}
+                          onChange={handleImageUpload}
+                      />
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isProcessing}
+                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-indigo-300 rounded-[2rem] bg-indigo-50/50 hover:bg-indigo-50 transition-colors cursor-pointer gap-2"
+                      >
+                          <div className="bg-white p-3 rounded-full shadow-sm">
+                              <ImageIcon className="text-indigo-500 w-6 h-6" />
+                          </div>
+                          <span className="text-indigo-600 font-bold text-sm">点击上传图片</span>
+                      </button>
+                  </div>
+              )}
           </div>
 
-          <div className="mt-8 flex items-center gap-4">
+          {/* Mode Switcher */}
+          <div className="mt-8 flex gap-2 bg-slate-100 p-1.5 rounded-2xl">
               <button 
-                onClick={() => setMode(mode === 'VOICE' ? 'TEXT' : 'VOICE')}
-                className="flex items-center gap-2 px-6 py-3 rounded-full bg-white border border-slate-200 text-slate-600 text-sm font-bold shadow-sm hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-100 transition-all"
+                onClick={() => { setMode('VOICE'); setStatusMessage("点击麦克风说话"); }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${mode === 'VOICE' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                  {mode === 'VOICE' ? <Keyboard size={18} /> : <Mic size={18} />}
-                  <span>{mode === 'VOICE' ? '切换键盘输入' : '切换网页语音'}</span>
+                  <Mic size={14} /> 语音
+              </button>
+              <button 
+                onClick={() => { setMode('TEXT'); setStatusMessage("输入文字"); }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${mode === 'TEXT' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                  <Keyboard size={14} /> 键盘
+              </button>
+              <button 
+                onClick={() => { setMode('IMAGE'); setStatusMessage("上传图片识别"); }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${mode === 'IMAGE' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                  <Camera size={14} /> 拍照
               </button>
           </div>
           
@@ -318,11 +383,6 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
              <p className={`text-sm font-bold transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-300'}`}>
                 {statusMessage}
              </p>
-             {mode === 'VOICE' && !browserSupport && (
-                 <p className="text-[10px] text-amber-500 mt-2 flex items-center justify-center gap-1">
-                     <AlertCircle size={10} /> 推荐使用 Chrome 浏览器或切换到键盘模式
-                 </p>
-             )}
           </div>
         </div>
       )}

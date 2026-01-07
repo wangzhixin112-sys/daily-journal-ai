@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Transaction, TransactionType, Category, User, Baby, 
-  CreditCardAccount, LoanAccount, SavingsGoal, FamilyNote, AppTab, Permissions
+  CreditCardAccount, LoanAccount, SavingsGoal, FamilyNote, AppTab
 } from './types';
 import { 
   MOCK_USERS, MOCK_BABIES, MOCK_GOALS, MOCK_CREDIT_CARDS, 
@@ -11,15 +11,16 @@ import { TransactionCard } from './components/TransactionCard';
 import { StatsView } from './components/StatsView';
 import { VoiceAssistant } from './components/VoiceAssistant';
 import { LandingPage } from './components/LandingPage';
+import { HomeView } from './components/views/HomeView';
+import { FamilyView } from './components/views/FamilyView';
+import { ProfileView } from './components/views/ProfileView';
 import { 
   Home, PieChart, Users, User as UserIcon, Sparkles, 
-  Wallet, Plus, ChevronLeft, ChevronRight, Settings, 
-  ShieldCheck, Baby as BabyIcon, Target, CreditCard, 
-  StickyNote, X, Clock, Check, ScanLine, TrendingUp, 
-  TrendingDown, PiggyBank, Pencil, Trash2, Landmark, 
-  ArrowLeftRight, CalendarClock, Smile, Trophy, CheckCircle2,
-  BarChart3, Eye, EyeOff, Zap, Search, Bell, Lock, Share2,
-  CalendarDays, Calculator
+  Wallet, Plus, ChevronLeft, CreditCard, 
+  X, Check, TrendingUp, TrendingDown, 
+  Pencil, Trash2, Landmark, ArrowLeftRight, Smile, Trophy, CheckCircle2,
+  BarChart3, Baby as BabyIcon, CalendarClock,
+  PiggyBank, ShieldCheck, Target, Share2, Rocket
 } from './components/Icons';
 
 // Helper Hook for Sticky State (Local Storage)
@@ -52,7 +53,8 @@ export default function App() {
   // --- Global State ---
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]);
+  // Safe initialization for empty MOCK_USERS
+  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0] || {} as User);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [babies, setBabies] = useState<Baby[]>(MOCK_BABIES);
   const [goals, setGoals] = useState<SavingsGoal[]>(MOCK_GOALS);
@@ -138,58 +140,17 @@ export default function App() {
   // --- Derived Data ---
   const visibleTransactions = transactions;
 
-  // Helper: Check if date is current month
-  const isCurrentMonth = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  const displayAmount = (amount: number) => {
+    return hideAmount ? '****' : `¥${amount.toLocaleString()}`;
   };
 
-  const currentMonthExpense = useMemo(() => 
-    visibleTransactions
-      .filter(t => t.type === TransactionType.EXPENSE && isCurrentMonth(t.date))
-      .reduce((acc, t) => acc + t.amount, 0),
-  [visibleTransactions]);
-
-  const currentMonthIncome = useMemo(() => 
-    visibleTransactions
-      .filter(t => t.type === TransactionType.INCOME && isCurrentMonth(t.date))
-      .reduce((acc, t) => acc + t.amount, 0),
-  [visibleTransactions]);
-
-  const remainingBudget = monthlyBudget - currentMonthExpense;
-
-  // Gamification: Budget Health Bar Logic
-  const budgetHealth = Math.max(0, Math.min(100, (remainingBudget / monthlyBudget) * 100));
-
-  const currentStreak = useMemo(() => {
-    const days = new Set(transactions.map(t => t.date.split('T')[0]));
-    return days.size;
-  }, [transactions]);
-
-  const creditCardDebt = useMemo(() => {
-    return transactions
-      .filter(t => t.category === Category.CREDIT_CARD || t.cardId)
-      .reduce((acc, t) => t.type === TransactionType.DEBT ? acc + t.amount : acc - t.amount, 0);
-  }, [transactions]);
-
-  const totalBabySpend = useMemo(() => {
-    const babyCats = [Category.BABY, Category.EDUCATION, Category.DAILY, Category.TOYS, Category.ALLOWANCE];
-    return transactions
-      .filter(t => t.babyId || babyCats.includes(t.category as Category))
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [transactions]);
-
-  // Helper: Calculate Age
   const getAge = (dateString?: string) => {
     if (!dateString) return '未设置生日';
     const today = new Date();
     const birthDate = new Date(dateString);
     if (isNaN(birthDate.getTime())) return '日期无效';
-    
     let months = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
     if (today.getDate() < birthDate.getDate()) months--;
-    
     if (months < 0) return '即将出生';
     if (months < 12) return `${months}个月`;
     const years = Math.floor(months / 12);
@@ -197,103 +158,11 @@ export default function App() {
     return `${years}岁${remainingMonths > 0 ? remainingMonths + '个月' : ''}`;
   };
 
-  // Enhanced Reminder Logic
-  const upcomingRepayments = useMemo(() => {
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth(); // 0-11
-    const currentYear = today.getFullYear();
-
-    const alerts: Array<{ 
-        id: string,
-        title: string, 
-        subTitle: string,
-        days: number, 
-        amount?: number, 
-        type: 'CARD_BILL' | 'CARD_REPAY' | 'LOAN',
-        actionData: any
-    }> = [];
-
-    const getDaysDiff = (targetDay: number) => {
-        let targetDate = new Date(currentYear, currentMonth, targetDay);
-        if (targetDay < currentDay) {
-             targetDate = new Date(currentYear, currentMonth + 1, targetDay);
-        }
-        const diffTime = targetDate.getTime() - today.getTime();
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    };
-
-    creditCards.forEach(card => {
-        if (card.billDay) {
-             const diff = getDaysDiff(card.billDay);
-             if (diff >= 0 && diff <= 3) {
-                 alerts.push({ 
-                     id: `bill_${card.id}`,
-                     title: `${card.bankName}出账日`, 
-                     subTitle: `尾号${card.last4Digits} · 等待账单更新`,
-                     days: diff, 
-                     type: 'CARD_BILL',
-                     actionData: null 
-                 });
-             }
-        }
-        if (card.repaymentDay && card.balance > 0) {
-             const diff = getDaysDiff(card.repaymentDay);
-             if (diff >= 0 && diff <= 10) { 
-                 alerts.push({ 
-                     id: `repay_${card.id}`,
-                     title: `还款: ${card.bankName}`, 
-                     subTitle: `尾号${card.last4Digits} · 剩余应还`,
-                     days: diff, 
-                     amount: card.balance, 
-                     type: 'CARD_REPAY',
-                     actionData: {
-                         type: TransactionType.REPAYMENT,
-                         category: Category.CREDIT_CARD,
-                         amount: card.balance.toString(),
-                         note: `偿还${card.bankName}信用卡`,
-                         cardId: card.id
-                     }
-                 });
-             }
-        }
-    });
-
-    loans.forEach(loan => {
-        if (loan.interestDay) {
-            const diff = getDaysDiff(loan.interestDay);
-            if (diff >= 0 && diff <= 7) {
-                 alerts.push({ 
-                     id: `loan_${loan.id}`,
-                     title: `还款: ${loan.name}`, 
-                     subTitle: `${loan.bankName} · 本期月供`,
-                     days: diff, 
-                     amount: loan.monthlyRepayment, 
-                     type: 'LOAN',
-                     actionData: {
-                         type: TransactionType.REPAYMENT,
-                         category: loan.category,
-                         amount: loan.monthlyRepayment.toString(),
-                         note: `偿还${loan.name}`,
-                         loanId: loan.id
-                     }
-                 });
-            }
-        }
-    });
-
-    return alerts.sort((a,b) => a.days - b.days);
-  }, [creditCards, loans]);
-
-
-  const displayAmount = (amount: number) => {
-    return hideAmount ? '****' : `¥${amount.toLocaleString()}`;
-  };
-
   // --- Handlers ---
 
   const handleLogin = (name: string) => {
-    const newUser: User = { id: `user_${Date.now()}`, name, avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${name}`, isFamilyAdmin: true, isPremium: false };
+    // Test Version: Auto Premium
+    const newUser: User = { id: `user_${Date.now()}`, name, avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${name}`, isFamilyAdmin: true, isPremium: true };
     setUsers([newUser, ...users]);
     setCurrentUser(newUser);
     setIsLoggedIn(true);
@@ -302,7 +171,7 @@ export default function App() {
   const upgradeToPremium = () => {
     setCurrentUser({ ...currentUser, isPremium: true });
     setActiveModule('NONE');
-    alert("恭喜！支付成功，已升级为专业版。");
+    alert("测试版已解锁全部功能！");
   };
 
   const toggleMemberPermission = (userId: string) => {
@@ -404,20 +273,15 @@ export default function App() {
   const handleAddMember = () => { 
       if (!inviteForm.name) return; 
 
-      // Membership Check: Limit free users to 2 members
-      if (!currentUser.isPremium && users.length >= 2) {
-          setShowInviteModal(false);
-          alert("免费版仅支持2位家庭成员。请升级专业版解锁无限制共享！");
-          setActiveModule('PAYMENT');
-          return;
-      }
+      // TEST MODE: LIMIT REMOVED
+      // if (!currentUser.isPremium && users.length >= 2) { ... }
 
       const newUser: User = { 
           id: `user_${Date.now()}`, 
           name: inviteForm.name, 
           avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${inviteForm.name}`, 
           isFamilyAdmin: inviteForm.role === 'admin', 
-          isPremium: false, 
+          isPremium: true, // TEST MODE: Force Premium
           permissions: { canView: true, canEdit: inviteForm.role === 'admin' } 
       }; 
       setUsers([...users, newUser]); 
@@ -564,126 +428,23 @@ export default function App() {
     );
   };
   const renderAssetManagement = () => ( <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8"> <div className="flex items-center gap-4"> <button onClick={() => setActiveModule('NONE')} className="p-2 bg-white rounded-full shadow-sm hover:bg-slate-50"><ChevronLeft/></button> <h2 className="text-2xl font-bold">我的钱包</h2> </div> <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold flex items-center gap-2"><CreditCard size={18}/> 信用卡</h3> {canEdit && <button onClick={() => setShowAddCardModal(true)} className="text-xs font-bold text-indigo-600">添加</button>} </div> <div className="space-y-3"> {creditCards.map(c => ( <div key={c.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center group"> <div><p className="font-bold">{c.bankName}</p><p className="text-xs text-slate-400">尾号 {c.last4Digits}</p></div> <p className="font-bold">{displayAmount(c.creditLimit)}</p> </div> ))} </div> </div> <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold flex items-center gap-2"><Landmark size={18}/> 贷款账户</h3> {canEdit && <button onClick={() => setShowAddLoanModal(true)} className="text-xs font-bold text-blue-600">添加</button>} </div> <div className="space-y-3"> {loans.map(l => ( <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center"> <div><p className="font-bold">{l.name}</p><p className="text-xs text-slate-400">{l.bankName}</p></div> <p className="font-bold">{displayAmount(l.balance)}</p> </div> ))} </div> </div> </div> </div> );
-  const renderPaymentPage = () => ( <div className="p-10 max-w-xl mx-auto text-center space-y-8"> <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto"><Trophy size={40}/></div> <h2 className="text-3xl font-bold">解锁每日记专业版</h2> <div className="bg-white p-8 rounded-[2.5rem] border-2 border-indigo-500 shadow-xl"> <p className="text-4xl font-black mb-6">¥99 <span className="text-sm text-slate-400 font-normal">/ 终身</span></p> <ul className="text-left space-y-4 mb-8"> <li className="flex items-center gap-2"><CheckCircle2 className="text-emerald-500"/> 无限制家庭成员共享</li> <li className="flex items-center gap-2"><CheckCircle2 className="text-emerald-500"/> AI 语音深度识别</li> <li className="flex items-center gap-2"><CheckCircle2 className="text-emerald-500"/> 资产趋势高级报表</li> </ul> <button onClick={upgradeToPremium} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">立即开通</button> <button onClick={() => setActiveModule('NONE')} className="mt-4 text-slate-400 text-sm">先用着免费版</button> </div> </div> );
-
-  const renderFamilyView = () => (
-      <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8 pb-32">
-         <div className="flex justify-between items-center">
-             <div>
-                <h2 className="text-3xl font-bold text-slate-800">家庭空间</h2>
-                <p className="text-sm text-slate-400 mt-1 flex items-center gap-2">
-                    {sharingSettings.enabled ? (
-                        <><span className="w-2 h-2 rounded-full bg-emerald-500"></span> 共享已开启</>
-                    ) : (
-                        <><span className="w-2 h-2 rounded-full bg-slate-300"></span> 共享已暂停</>
-                    )}
-                </p>
-             </div>
-             {isFamilyAdmin && (
-                 <button 
-                    onClick={() => setShowSharingSettings(true)}
-                    className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-all active:scale-95"
-                >
-                    <Settings size={18} /> <span className="hidden sm:inline">共享设置</span>
-                </button>
-             )}
-         </div>
-
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                 <div className="flex justify-between items-center mb-6">
-                     <h3 className="font-bold text-slate-800 text-lg">家庭成员</h3>
-                     {isFamilyAdmin && <button onClick={() => setShowInviteModal(true)} className="text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full text-xs font-bold hover:bg-indigo-100 transition-colors">添加成员 +</button>}
-                 </div>
-                 <div className="space-y-3">
-                    {users.map((u) => {
-                        const isCurrentUser = u.id === currentUser.id;
-                        const canManage = isFamilyAdmin && !isCurrentUser;
-                        const roleLabel = u.isFamilyAdmin ? '管理员' : (u.permissions?.canEdit ? '编辑者' : '观察员');
-                        const roleColor = u.isFamilyAdmin ? 'bg-indigo-100 text-indigo-600' : (u.permissions?.canEdit ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500');
-
-                        return (
-                            <div key={u.id} className={`flex items-center gap-4 p-3 rounded-2xl transition-all ${isCurrentUser ? 'bg-indigo-50/50 border border-indigo-100' : 'hover:bg-slate-50'}`}>
-                                <img src={u.avatar} alt={u.name} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" />
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <p className={`font-bold ${isCurrentUser ? 'text-indigo-900' : 'text-slate-800'}`}>{u.name}</p>
-                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${roleColor}`}>{roleLabel}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-xs text-slate-400 font-medium">{isCurrentUser ? '当前登录' : (u.permissions?.canEdit ? '可编辑账本' : '仅查看权限')}</p>
-                                        {canManage && (
-                                            <button 
-                                                onClick={() => toggleMemberPermission(u.id)}
-                                                className="text-[10px] px-2 py-0.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-sm"
-                                            >
-                                                {u.permissions?.canEdit ? '设为只读' : '允许编辑'}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                {isFamilyAdmin && !isCurrentUser && (
-                                    <button onClick={() => setMemberToDelete(u)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16} /></button>
-                                )}
-                            </div>
-                        )
-                    })}
-                 </div>
-             </div>
-             
-             {/* Baby Section (With Edit) */}
-             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                 <div className="flex justify-between items-center mb-6">
-                     <h3 className="font-bold text-slate-800 text-lg">宝宝档案</h3>
-                     {isFamilyAdmin && <button onClick={openAddBabyModal} className="text-pink-500 bg-pink-50 px-3 py-1.5 rounded-full text-xs font-bold hover:bg-pink-100 transition-colors">添加宝宝 +</button>}
-                 </div>
-                 <div className="space-y-3">
-                    {babies.map((b) => (
-                        <div key={b.id} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100 group relative">
-                            {/* Actions on Hover */}
-                            {isFamilyAdmin && (
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button 
-                                        onClick={(e) => openEditBabyModal(e, b)}
-                                        className="p-1.5 bg-white shadow-sm border border-slate-100 text-indigo-500 rounded-full hover:bg-indigo-50"
-                                    >
-                                        <Pencil size={12} />
-                                    </button>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); setBabyToDelete(b); }}
-                                        className="p-1.5 bg-white shadow-sm border border-slate-100 text-red-500 rounded-full hover:bg-red-50"
-                                    >
-                                        <Trash2 size={12} />
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="w-12 h-12 bg-pink-50 rounded-full flex items-center justify-center text-2xl border-2 border-white shadow-sm">
-                                {b.avatar}
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="font-bold text-slate-800">{b.name}</p>
-                                    <span className="text-[10px] bg-pink-50 text-pink-500 px-1.5 py-0.5 rounded font-bold">
-                                        {getAge(b.birthDate)}
-                                    </span>
-                                </div>
-                                <p className="text-xs text-slate-400 font-medium">{b.birthDate || '未设置生日'}</p>
-                            </div>
-                        </div>
-                    ))}
-                    {babies.length === 0 && (
-                        <div className="text-center py-8 text-slate-400">
-                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <BabyIcon size={32} className="opacity-20" />
-                            </div>
-                            <p className="text-xs">还没有添加宝宝信息</p>
-                        </div>
-                    )}
-                 </div>
-             </div>
-         </div>
-      </div>
+  
+  // Update Payment Page to be "Test Mode" info page
+  const renderPaymentPage = () => ( 
+    <div className="p-10 max-w-xl mx-auto text-center space-y-8 animate-in zoom-in-95"> 
+        <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto"><Rocket size={40}/></div> 
+        <h2 className="text-3xl font-bold">开发者测试模式</h2> 
+        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-dashed border-emerald-200 shadow-sm"> 
+            <div className="inline-block bg-emerald-600 text-white px-4 py-1 rounded-full text-xs font-bold mb-4">功能全开</div>
+            <p className="text-lg font-bold text-slate-700 mb-6">小程序体验版已自动解锁 VIP 权益</p> 
+            <ul className="text-left space-y-4 mb-8 bg-slate-50 p-6 rounded-2xl"> 
+                <li className="flex items-center gap-2 text-sm font-bold text-slate-600"><CheckCircle2 className="text-emerald-500" size={16}/> 无限制家庭成员共享</li> 
+                <li className="flex items-center gap-2 text-sm font-bold text-slate-600"><CheckCircle2 className="text-emerald-500" size={16}/> 解锁全部 AI 语音识别额度</li> 
+                <li className="flex items-center gap-2 text-sm font-bold text-slate-600"><CheckCircle2 className="text-emerald-500" size={16}/> 资产趋势高级报表</li> 
+            </ul> 
+            <button onClick={() => setActiveModule('NONE')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">开始体验</button> 
+        </div> 
+    </div> 
   );
 
   const renderContent = () => {
@@ -696,334 +457,56 @@ export default function App() {
 
     switch(activeTab) {
       case AppTab.HOME:
-        return (
-          <div className="pb-32 lg:pb-10 relative">
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-30 bg-slate-50/90 backdrop-blur-xl border-b border-slate-200/50 px-6 md:px-10 py-4 mb-6 flex justify-between items-center transition-all">
-                <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
-                      <img src={currentUser.avatar} alt="avatar" />
-                   </div>
-                   <div>
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-lg font-bold text-slate-900">早安，{currentUser.name}</h1>
-                        <span className="text-xl animate-bounce">
-                           {budgetHealth > 50 ? '🥰' : budgetHealth > 20 ? '😬' : '😱'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 font-medium">连续记账第 {currentStreak} 天</p>
-                   </div>
-                </div>
-                
-                <div className="flex gap-3">
-                   <button onClick={() => setHideAmount(!hideAmount)} className="w-10 h-10 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 hover:border-slate-300 transition-all shadow-sm">
-                      {hideAmount ? <EyeOff size={18}/> : <Eye size={18}/>}
-                   </button>
-                   {canEdit && (
-                       <button onClick={() => setShowAddModal(true)} className="bg-slate-900 text-white px-5 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 active:scale-95 transition-all shadow-lg shadow-slate-200/50">
-                           <Plus size={18}/> <span className="hidden sm:inline">记一笔</span>
-                       </button>
-                   )}
-                </div>
-            </div>
-            
-            <div className="px-6 md:px-10 space-y-8">
-                
-                {/* 1. Family Sticky Notes Widget */}
-                <div>
-                     <div className="flex justify-between items-center mb-4">
-                         <h3 className="text-sm font-bold text-slate-500 uppercase flex items-center gap-2">
-                            <StickyNote size={14} className="text-yellow-500"/> 家庭便利贴
-                         </h3>
-                         {canEdit && <button onClick={() => setShowAddNoteModal(true)} className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100">+ 贴一张</button>}
-                     </div>
-                     <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 md:mx-0 md:px-0 no-scrollbar snap-x">
-                         {familyNotes.map(note => (
-                             <div key={note.id} className={`min-w-[200px] ${note.color} p-4 rounded-2xl shadow-sm relative group snap-start border border-black/5 transform rotate-1 hover:rotate-0 transition-all`}>
-                                 {(isFamilyAdmin || note.userId === currentUser.id) && (
-                                     <button onClick={() => setNoteToDelete(note)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all"><X size={14}/></button>
-                                 )}
-                                 <div className="flex items-center gap-2 mb-2">
-                                     <img src={note.userAvatar} className="w-6 h-6 rounded-full border border-white" />
-                                     <span className="text-xs font-bold text-slate-700">{note.userName}</span>
-                                     <span className="ml-auto text-lg">{note.emoji}</span>
-                                 </div>
-                                 <p className="text-sm font-medium text-slate-800 leading-snug">{note.content}</p>
-                                 <p className="text-[10px] text-slate-400 mt-2 text-right">{new Date(note.createdAt).toLocaleDateString()}</p>
-                             </div>
-                         ))}
-                         {/* Empty State / Add Placeholder */}
-                         {familyNotes.length === 0 && (
-                            <div className="min-w-[200px] bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-400 gap-2">
-                                <StickyNote size={24} className="opacity-20"/>
-                                <span className="text-xs font-bold">还没有留言哦</span>
-                            </div>
-                         )}
-                     </div>
-                </div>
-
-                {/* 2. Intelligent Reminder Widget */}
-                {upcomingRepayments.length > 0 && (
-                   <div className="animate-in fade-in slide-in-from-top-4">
-                       <div className="flex items-center justify-between mb-3 px-1">
-                           <h3 className="text-sm font-bold text-slate-500 uppercase flex items-center gap-2">
-                               <Clock size={14} className="text-indigo-500"/> 待办提醒
-                           </h3>
-                           <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{upcomingRepayments.length} 项</span>
-                       </div>
-                       
-                       <div className="flex gap-3 overflow-x-auto pb-4 -mx-6 px-6 md:mx-0 md:px-0 no-scrollbar">
-                           {upcomingRepayments.map((alert) => (
-                               <div key={alert.id} className={`min-w-[260px] p-4 rounded-2xl border flex flex-col justify-between relative overflow-hidden group shadow-sm transition-all hover:shadow-md ${
-                                   alert.type === 'CARD_BILL' ? 'bg-white border-slate-200' : 'bg-white border-red-100'
-                               }`}>
-                                   <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-                                       alert.days <= 3 ? 'bg-red-500' : 'bg-indigo-500'
-                                   }`}></div>
-
-                                   <div className="pl-3 mb-3">
-                                       <div className="flex justify-between items-start">
-                                            <div>
-                                                <h4 className="font-bold text-slate-800">{alert.title}</h4>
-                                                <p className="text-xs text-slate-500 mt-0.5">{alert.subTitle}</p>
-                                            </div>
-                                            <div className={`text-[10px] font-bold px-2 py-1 rounded-md ${
-                                                alert.days === 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'
-                                            }`}>
-                                                {alert.days === 0 ? '今天' : `${alert.days}天后`}
-                                            </div>
-                                       </div>
-                                       
-                                       {alert.amount !== undefined && (
-                                           <div className="mt-2 text-xl font-bold text-slate-900">
-                                               {displayAmount(alert.amount)}
-                                           </div>
-                                       )}
-                                   </div>
-
-                                   <div className="pl-3">
-                                       {alert.actionData && canEdit ? (
-                                           <button 
-                                                onClick={() => handleQuickPay(alert.actionData)}
-                                                className="w-full py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 active:scale-95"
-                                           >
-                                               <Check size={14} /> 立即还款
-                                           </button>
-                                       ) : (
-                                           <button className="w-full py-2 bg-slate-50 text-slate-400 rounded-lg text-xs font-bold cursor-default border border-slate-100">
-                                               {canEdit ? '等待出账' : '仅查看'}
-                                           </button>
-                                       )}
-                                   </div>
-                               </div>
-                           ))}
-                       </div>
-                   </div>
-                )}
-
-                {/* 3. Gamified Net Asset Card (Health Bar) */}
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-200 relative overflow-hidden flex flex-col justify-between group">
-                    <div className="relative z-10">
-                      <div className="flex justify-between items-start">
-                         <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm">
-                                 {budgetHealth > 50 ? '😎' : '😰'}
-                             </div>
-                             <p className="text-indigo-100 text-xs font-bold uppercase tracking-widest">家庭预算 HP</p>
-                         </div>
-                         <div className="opacity-50"><ScanLine size={24}/></div>
-                      </div>
-                      
-                      <div className="mt-6 mb-2">
-                          <h2 className="text-4xl font-bold tracking-tight">{displayAmount(remainingBudget)}</h2>
-                          
-                          {/* Improved Edit Trigger */}
-                          <div 
-                            onClick={() => { if(canEdit) { setNewBudgetAmount(monthlyBudget.toString()); setShowEditBudgetModal(true); } }}
-                            className={`flex items-center gap-2 mt-1 w-fit rounded-lg px-2 -ml-2 py-1 transition-all ${canEdit ? 'hover:bg-white/10 cursor-pointer group/edit' : ''}`}
-                          >
-                              <p className="text-xs text-indigo-200">本月剩余预算 (月额度 {displayAmount(monthlyBudget)})</p>
-                              {canEdit && (
-                                  <Pencil size={12} className="text-indigo-300 opacity-50 group-hover/edit:opacity-100 group-hover/edit:text-white transition-all" />
-                              )}
-                          </div>
-                      </div>
-
-                      {/* Health Bar */}
-                      <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden border border-white/10 mt-2 relative">
-                           <div 
-                              className={`h-full transition-all duration-1000 ${
-                                  budgetHealth > 50 ? 'bg-gradient-to-r from-emerald-400 to-teal-400' : 
-                                  budgetHealth > 20 ? 'bg-gradient-to-r from-yellow-400 to-orange-500' : 'bg-gradient-to-r from-red-500 to-red-600 animate-pulse'
-                              }`} 
-                              style={{ width: `${budgetHealth}%` }}
-                           ></div>
-                           <span className="absolute top-0 left-2 text-[10px] font-bold leading-4 text-white drop-shadow-md">HP: {budgetHealth.toFixed(0)}%</span>
-                      </div>
-                      
-                      <div className="mt-8 flex gap-12">
-                          <div>
-                             <p className="text-indigo-200 text-[10px] font-bold mb-1">本月收入</p>
-                             <p className="font-bold text-lg flex items-center gap-1"><TrendingUp size={14}/> {displayAmount(currentMonthIncome)}</p>
-                          </div>
-                          <div>
-                             <p className="text-indigo-200 text-[10px] font-bold mb-1">本月支出</p>
-                             <p className="font-bold text-lg flex items-center gap-1"><TrendingDown size={14}/> {displayAmount(currentMonthExpense)}</p>
-                          </div>
-                      </div>
-                    </div>
-                    {/* Decorative Background */}
-                    <div className="absolute -right-10 -top-10 w-40 h-40 bg-pink-500 rounded-full blur-[60px] opacity-40"></div>
-                    <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500 rounded-full blur-[60px] opacity-40"></div>
-                </div>
-
-                {/* Goals Section */}
-                <div>
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 onClick={() => setActiveModule('GOALS')} className="font-bold text-lg text-slate-800 flex items-center gap-2 cursor-pointer group hover:text-indigo-600 transition-colors">
-                            我的心愿 <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500 transition-colors"/>
-                        </h3>
-                        {canEdit && <button onClick={() => setShowAddGoalModal(true)} className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors">
-                            + 添加
-                        </button>}
-                    </div>
-                    <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 md:mx-0 md:px-0 no-scrollbar snap-x">
-                        {goals.map(goal => {
-                            const percent = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
-                            return (
-                                <div key={goal.id} onClick={() => { if(canEdit) { setSelectedGoal(goal); setShowDepositModal(true); } }} className="min-w-[160px] w-[160px] bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex-shrink-0 snap-start relative overflow-hidden group cursor-pointer active:scale-95 transition-all">
-                                    {canEdit && (
-                                        <button 
-                                            onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                setGoalToDelete(goal); 
-                                            }} 
-                                            className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full text-slate-400 hover:text-red-500 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all z-20 shadow-sm"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    )}
-                                    <div className={`absolute top-0 right-0 w-16 h-16 bg-gradient-to-br ${goal.color} opacity-10 rounded-bl-full -mr-2 -mt-2`}></div>
-                                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-xl mb-3">{goal.icon}</div>
-                                    <h4 className="font-bold text-slate-800 text-sm truncate">{goal.name}</h4>
-                                    <div className="mt-2">
-                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1">
-                                            <span>{percent.toFixed(0)}%</span>
-                                            <span>{displayAmount(goal.targetAmount)}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full bg-gradient-to-r ${goal.color}`} style={{ width: `${percent}%` }}></div>
-                                        </div>
-                                        <p className="text-xs font-bold text-slate-900 mt-2">{displayAmount(goal.currentAmount)}</p>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                        {/* Add Goal Placeholder */}
-                        {canEdit && (
-                            <div onClick={() => setShowAddGoalModal(true)} className="min-w-[100px] bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 cursor-pointer text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
-                                <Plus size={24} />
-                                <span className="text-xs font-bold">新目标</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Debt & Baby Section - Detailed Split View */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Unified Debt Card */}
-                    <div onClick={() => { setActiveModule('DEBT'); setDebtTab('CARDS'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors relative overflow-hidden group">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="flex -space-x-2">
-                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border-2 border-white z-10"><CreditCard size={20}/></div>
-                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border-2 border-white"><Landmark size={20}/></div>
-                            </div>
-                            <div className="bg-slate-100 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 group-hover:bg-slate-200 transition-colors">{creditCards.length + loans.length} 个账户</div>
-                        </div>
-                        <p className="text-xs text-slate-400 font-bold uppercase">负债总览</p>
-                        <h3 className="text-2xl font-bold text-slate-800 mt-1">{displayAmount(creditCardDebt + loans.reduce((a,l)=>a+l.balance,0))}</h3>
-                        <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                           <span className="w-2 h-2 rounded-full bg-indigo-500"></span> 卡片
-                           <span className="w-2 h-2 rounded-full bg-blue-500 ml-2"></span> 贷款
-                        </p>
-                    </div>
-
-                    {/* Baby Spend */}
-                    <div onClick={() => setActiveModule('BABY_LIST')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors relative overflow-hidden flex flex-col justify-between">
-                        <div className="flex justify-between items-start">
-                             <div className="w-10 h-10 bg-pink-50 text-pink-500 rounded-xl flex items-center justify-center"><BabyIcon size={20}/></div>
-                             <div className="flex -space-x-2">
-                                {babies.map(b => (
-                                    <div key={b.id} className="w-6 h-6 rounded-full bg-white border-2 border-white shadow-sm flex items-center justify-center text-[10px]">{b.avatar}</div>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <p className="text-xs text-slate-400 font-bold uppercase mt-4">宝宝成长基金</p>
-                            <h3 className="text-2xl font-bold text-slate-800 mt-1">{displayAmount(totalBabySpend)}</h3>
-                            <p className="text-xs text-pink-500 mt-2 font-bold flex items-center gap-1"><TrendingUp size={12}/> 本月支出</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl">最近账单</h3><button className="text-xs text-indigo-600 font-bold">查看全部</button></div>
-                    {transactions.slice(0, 5).map(t => <TransactionCard key={t.id} transaction={t} user={users.find(u => u.id === t.userId)} onClick={openTransactionDetail} hideAmount={hideAmount} />)}
-                </div>
-            </div>
-          </div>
-        );
+        return <HomeView 
+          currentUser={currentUser}
+          transactions={visibleTransactions}
+          users={users}
+          monthlyBudget={monthlyBudget}
+          familyNotes={familyNotes}
+          goals={goals}
+          creditCards={creditCards}
+          loans={loans}
+          babies={babies}
+          hideAmount={hideAmount}
+          canEdit={canEdit}
+          onSetHideAmount={setHideAmount}
+          onAddTransaction={() => setShowAddModal(true)}
+          onAddNote={() => setShowAddNoteModal(true)}
+          onDeleteNote={(note) => setNoteToDelete(note)}
+          onQuickPay={handleQuickPay}
+          onEditBudget={() => { setNewBudgetAmount(monthlyBudget.toString()); setShowEditBudgetModal(true); }}
+          onOpenModule={setActiveModule}
+          onAddGoal={() => setShowAddGoalModal(true)}
+          onSelectGoal={(goal) => { setSelectedGoal(goal); setShowDepositModal(true); }}
+          onDeleteGoal={(goal) => setGoalToDelete(goal)}
+          onOpenTransactionDetail={openTransactionDetail}
+        />;
       case AppTab.STATS: return <StatsView transactions={visibleTransactions} />;
       case AppTab.AI_ASSISTANT: return <VoiceAssistant onAddTransaction={(data) => setTransactions([{...data, id: Date.now().toString(), userId: currentUser.id}, ...transactions])} currentUserId={currentUser.id} readOnly={!canEdit} />;
-      case AppTab.FAMILY: return renderFamilyView();
-      case AppTab.PROFILE: return (
-          <div className="p-10 max-w-2xl mx-auto space-y-10">
-            <div className="flex items-center gap-6">
-              <img src={currentUser.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-xl" />
-              <div>
-                <h2 className="text-3xl font-bold">{currentUser.name} {currentUser.isPremium && "👑"}</h2>
-                <div className="flex items-center gap-2 mt-1">
-                    <span className="text-slate-400 text-sm">{isFamilyAdmin ? "家庭管理员" : "家庭成员"}</span>
-                    {!canEdit && <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-md font-bold">仅查看</span>}
-                </div>
-              </div>
-            </div>
-            
-            {/* User Switcher Demo */}
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <h3 className="font-bold text-slate-600 mb-4 text-sm flex items-center gap-2"><Users size={16}/> 切换账号 (模拟多用户)</h3>
-                <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-                    {users.map(u => (
-                        <button key={u.id} onClick={() => { setCurrentUser(u); setActiveTab(AppTab.HOME); }} className={`flex flex-col items-center gap-2 p-3 rounded-2xl min-w-[80px] border transition-all ${currentUser.id === u.id ? 'bg-white border-indigo-500 shadow-md scale-105' : 'bg-white border-slate-200 opacity-60 hover:opacity-100'}`}>
-                            <div className="relative">
-                                <img src={u.avatar} className="w-10 h-10 rounded-full"/>
-                                {u.isFamilyAdmin && <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-[8px] text-white px-1 rounded">Admin</div>}
-                            </div>
-                            <span className="text-xs font-bold truncate max-w-full">{u.name}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              <button onClick={() => setActiveModule('ASSETS')} className="w-full bg-white p-6 rounded-3xl border border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-all group">
-                <span className="font-bold flex items-center gap-3"><div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Wallet size={20}/></div> 我的钱包 (卡片/贷款)</span>
-                <ChevronRight size={20} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button onClick={() => { setNewBudgetAmount(monthlyBudget.toString()); setShowEditBudgetModal(true); }} className="w-full bg-white p-6 rounded-3xl border border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-all group">
-                <span className="font-bold flex items-center gap-3"><div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><Calculator size={20}/></div> 家庭预算设置</span>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-400">¥{monthlyBudget.toLocaleString()}</span>
-                    <ChevronRight size={20} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </button>
-              <button onClick={() => setActiveModule('PAYMENT')} className="w-full bg-white p-6 rounded-3xl border border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-all group">
-                <span className="font-bold flex items-center gap-3"><div className="p-2 bg-amber-50 text-amber-500 rounded-xl"><Zap size={20}/></div> 会员权益中心</span>
-                <ChevronRight size={20} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-          </div>
-        );
+      case AppTab.FAMILY: return <FamilyView 
+          users={users}
+          currentUser={currentUser}
+          babies={babies}
+          sharingSettings={sharingSettings}
+          isFamilyAdmin={isFamilyAdmin}
+          onOpenSettings={() => setShowSharingSettings(true)}
+          onOpenInvite={() => setShowInviteModal(true)}
+          onTogglePermission={toggleMemberPermission}
+          onDeleteMember={(u) => setMemberToDelete(u)}
+          onAddBaby={openAddBabyModal}
+          onEditBaby={openEditBabyModal}
+          onDeleteBaby={(b) => setBabyToDelete(b)}
+      />;
+      case AppTab.PROFILE: return <ProfileView 
+          currentUser={currentUser}
+          users={users}
+          monthlyBudget={monthlyBudget}
+          isFamilyAdmin={isFamilyAdmin}
+          canEdit={canEdit}
+          onSwitchUser={(u) => { setCurrentUser(u); setActiveTab(AppTab.HOME); }}
+          onOpenModule={setActiveModule}
+          onEditBudget={() => { setNewBudgetAmount(monthlyBudget.toString()); setShowEditBudgetModal(true); }}
+      />;
       default: return null;
     }
   };

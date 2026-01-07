@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, ComposedChart, Area
+  ComposedChart, Area, CartesianGrid, XAxis, YAxis
 } from 'recharts';
-import { Transaction, TransactionType, Category } from '../types';
+import { Transaction, TransactionType } from '../types';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -15,10 +15,8 @@ import {
   BarChart3,
   PieChart as PieIcon,
   CreditCard,
-  Wallet,
-  ArrowRight,
-  Landmark,
-  Target
+  Target,
+  ArrowRight
 } from './Icons';
 import { getFinancialAdvice } from '../services/geminiService';
 
@@ -280,10 +278,10 @@ export const StatsView: React.FC<Props> = ({ transactions }) => {
   const savingsRate = currentStats.income > 0 ? (netSavings / currentStats.income) * 100 : 0;
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-50 relative">
-       {/* Sticky Header with Glassmorphism */}
-       <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-20 border-b border-slate-100">
-          <div className="px-6 py-4 max-w-7xl mx-auto w-full">
+    <div className="pb-32 lg:pb-10 relative">
+       {/* Sticky Header - Matched HomeView style */}
+       <div className="sticky top-0 z-30 bg-slate-50/90 backdrop-blur-xl border-b border-slate-200/50 px-6 md:px-10 py-4 mb-6 transition-all">
+          <div className="max-w-7xl mx-auto w-full">
              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                  {/* Mode Toggle */}
                  <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-xs relative shadow-inner">
@@ -311,8 +309,8 @@ export const StatsView: React.FC<Props> = ({ transactions }) => {
           </div>
        </div>
 
-       {/* Scrollable Content */}
-       <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-28 md:pb-6 max-w-7xl mx-auto w-full">
+       {/* Natural Content Flow (Removed h-full & overflow-y-auto) */}
+       <div className="px-6 md:px-10 space-y-6 max-w-7xl mx-auto w-full">
            
            {/* Visual Mode Switcher (Charts vs Calendar) - Only show in Month view */}
            {viewMode === 'MONTH' && (
