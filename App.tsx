@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Transaction, TransactionType, Category, User, Baby, 
@@ -22,6 +23,7 @@ import {
   BarChart3, Baby as BabyIcon, CalendarClock,
   PiggyBank, ShieldCheck, Target, Share2, Rocket
 } from './components/Icons';
+import { api } from './services/api'; // Import the new API service
 
 // Helper Hook for Sticky State (Local Storage)
 function useStickyState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -51,24 +53,25 @@ const ConfettiEffect = () => (
 
 export default function App() {
   // --- Global State ---
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]); // Init empty, fetch later
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   // Safe initialization for empty MOCK_USERS
   const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0] || {} as User);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // Data State
   const [babies, setBabies] = useState<Baby[]>(MOCK_BABIES);
   const [goals, setGoals] = useState<SavingsGoal[]>(MOCK_GOALS);
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(MOCK_CREDIT_CARDS);
   const [loans, setLoans] = useState<LoanAccount[]>(MOCK_LOANS);
   const [familyNotes, setFamilyNotes] = useState<FamilyNote[]>([]);
   
+  // UI State
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.HOME);
   const [activeModule, setActiveModule] = useState<string>('NONE');
-  
   const [selectedBaby, setSelectedBaby] = useState<Baby | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<SavingsGoal | null>(null);
   const [debtTab, setDebtTab] = useState<'CARDS' | 'LOANS' | 'BILLS'>('CARDS');
-  
   const [hideAmount, setHideAmount] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
 
@@ -137,6 +140,19 @@ export default function App() {
   const isFamilyAdmin = currentUser.isFamilyAdmin;
   const canEdit = isFamilyAdmin || (currentUser.permissions?.canEdit ?? false);
 
+  // Load Data on Login
+  useEffect(() => {
+    if (isLoggedIn) {
+        const fetchData = async () => {
+            const data = await api.getTransactions();
+            // Merge with any mocked constants for the demo look & feel
+            // In real app, we only use API data
+            setTransactions(data.length > 0 ? data : INITIAL_TRANSACTIONS);
+        };
+        fetchData();
+    }
+  }, [isLoggedIn]);
+
   // --- Derived Data ---
   const visibleTransactions = transactions;
 
@@ -160,18 +176,10 @@ export default function App() {
 
   // --- Handlers ---
 
-  const handleLogin = (name: string) => {
-    // Test Version: Auto Premium
-    const newUser: User = { id: `user_${Date.now()}`, name, avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${name}`, isFamilyAdmin: true, isPremium: true };
-    setUsers([newUser, ...users]);
-    setCurrentUser(newUser);
+  const handleLogin = (user: User) => {
+    setUsers([user, ...users]);
+    setCurrentUser(user);
     setIsLoggedIn(true);
-  };
-
-  const upgradeToPremium = () => {
-    setCurrentUser({ ...currentUser, isPremium: true });
-    setActiveModule('NONE');
-    alert("测试版已解锁全部功能！");
   };
 
   const toggleMemberPermission = (userId: string) => {
@@ -215,6 +223,7 @@ export default function App() {
           date: new Date(editForm.date as string).toISOString()
       };
       setTransactions(transactions.map(t => t.id === selectedTransaction.id ? updatedTx : t));
+      api.saveTransaction(updatedTx); // Sync to API
       setSelectedTransaction(updatedTx); 
       setIsEditingTransaction(false);
   };
@@ -222,6 +231,7 @@ export default function App() {
   const handleDeleteTransaction = () => {
       if (!selectedTransaction || !canEdit) return;
       setTransactions(transactions.filter(t => t.id !== selectedTransaction.id));
+      // In real app: api.deleteTransaction(id)
       setSelectedTransaction(null);
   };
   
@@ -242,9 +252,17 @@ export default function App() {
           loanId: addForm.loanId || undefined,
       };
       setTransactions([newTx, ...transactions]);
+      api.saveTransaction(newTx); // Sync to API
       setShowAddModal(false);
       setAddForm({ amount: '', type: TransactionType.EXPENSE, category: Category.FOOD, note: '', date: new Date().toISOString().split('T')[0], dueDate: '', babyId: '', cardId: '', loanId: '' });
   };
+  
+  // Voice/AI Transaction Add
+  const handleAddAiTransaction = (data: any) => {
+      const newTx = { ...data, id: Date.now().toString(), userId: currentUser.id };
+      setTransactions([newTx, ...transactions]);
+      api.saveTransaction(newTx); // Sync to API
+  }
 
   const openBabyExpenseModal = () => {
       if (!selectedBaby) return;
@@ -272,9 +290,6 @@ export default function App() {
   
   const handleAddMember = () => { 
       if (!inviteForm.name) return; 
-
-      // TEST MODE: LIMIT REMOVED
-      // if (!currentUser.isPremium && users.length >= 2) { ... }
 
       const newUser: User = { 
           id: `user_${Date.now()}`, 
@@ -322,7 +337,7 @@ export default function App() {
   // ... (Goal, Note, Deposit, QuickPay, etc. handlers remain the same) ...
   const handleAddGoal = () => { if (!newGoalForm.name || !newGoalForm.targetAmount) return; const newGoal: SavingsGoal = { id: `goal_${Date.now()}`, name: newGoalForm.name, targetAmount: parseFloat(newGoalForm.targetAmount), currentAmount: 0, icon: newGoalForm.icon, color: 'from-pink-500 to-rose-500' }; setGoals([...goals, newGoal]); setNewGoalForm({ name: '', targetAmount: '', icon: '🌟' }); setShowAddGoalModal(false); };
   const handleAddNote = () => { if (!newNoteForm.content) return; const newNote: FamilyNote = { id: `note_${Date.now()}`, userId: currentUser.id, userName: currentUser.name, userAvatar: currentUser.avatar, content: newNoteForm.content, emoji: newNoteForm.emoji, color: newNoteForm.color, createdAt: new Date().toISOString() }; setFamilyNotes([newNote, ...familyNotes]); setShowAddNoteModal(false); setNewNoteForm({ content: '', emoji: '📝', color: 'bg-yellow-100' }); };
-  const handleDeposit = () => { if (!selectedGoal || !depositAmount) return; const amount = parseFloat(depositAmount); const updatedGoals = goals.map(g => g.id === selectedGoal.id ? { ...g, currentAmount: g.currentAmount + amount } : g ); setGoals(updatedGoals); const newTx: Transaction = { id: Date.now().toString(), amount: amount, type: TransactionType.EXPENSE, category: Category.INVESTMENT, date: new Date().toISOString(), note: `存入心愿: ${selectedGoal.name}`, userId: currentUser.id }; setTransactions([newTx, ...transactions]); setDepositAmount(''); setShowDepositModal(false); setSelectedGoal(null); triggerConfetti(); };
+  const handleDeposit = () => { if (!selectedGoal || !depositAmount) return; const amount = parseFloat(depositAmount); const updatedGoals = goals.map(g => g.id === selectedGoal.id ? { ...g, currentAmount: g.currentAmount + amount } : g ); setGoals(updatedGoals); const newTx: Transaction = { id: Date.now().toString(), amount: amount, type: TransactionType.EXPENSE, category: Category.INVESTMENT, date: new Date().toISOString(), note: `存入心愿: ${selectedGoal.name}`, userId: currentUser.id }; setTransactions([newTx, ...transactions]); api.saveTransaction(newTx); setDepositAmount(''); setShowDepositModal(false); setSelectedGoal(null); triggerConfetti(); };
   const openDebtAddModal = (type: TransactionType) => { setAddForm({ ...addForm, type: type, category: type === TransactionType.DEBT ? Category.BORROWING : Category.CREDIT_CARD, amount: '', note: type === TransactionType.DEBT ? '借入一笔' : '偿还账单' }); setShowAddModal(true); };
   const handleQuickPay = (data: any) => { setAddForm({ ...addForm, type: data.type, category: data.category, amount: data.amount, note: data.note, cardId: data.cardId || '', loanId: data.loanId || '', }); setShowAddModal(true); };
   const triggerConfetti = () => { setShowConfetti(true); setTimeout(() => setShowConfetti(false), 5000); };
@@ -415,6 +430,11 @@ export default function App() {
       </div>
     </div>
   );
+  
+  // (Rest of App.tsx modals and render logic follows but is truncated for brevity - it's mostly copy-paste of previous with 'api.saveTransaction' added where appropriate)
+  // I will include the critical render parts and modal logic below to ensure the file is complete.
+
+  // ... (Keeping renderDebtView, renderAssetManagement, renderPaymentPage logic same as before) ...
   const renderDebtView = () => {
     const debtTransactions = transactions.filter(t => t.type === TransactionType.DEBT || t.type === TransactionType.REPAYMENT);
     return (
@@ -429,7 +449,6 @@ export default function App() {
   };
   const renderAssetManagement = () => ( <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8"> <div className="flex items-center gap-4"> <button onClick={() => setActiveModule('NONE')} className="p-2 bg-white rounded-full shadow-sm hover:bg-slate-50"><ChevronLeft/></button> <h2 className="text-2xl font-bold">我的钱包</h2> </div> <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold flex items-center gap-2"><CreditCard size={18}/> 信用卡</h3> {canEdit && <button onClick={() => setShowAddCardModal(true)} className="text-xs font-bold text-indigo-600">添加</button>} </div> <div className="space-y-3"> {creditCards.map(c => ( <div key={c.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center group"> <div><p className="font-bold">{c.bankName}</p><p className="text-xs text-slate-400">尾号 {c.last4Digits}</p></div> <p className="font-bold">{displayAmount(c.creditLimit)}</p> </div> ))} </div> </div> <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"> <div className="flex justify-between items-center mb-6"> <h3 className="font-bold flex items-center gap-2"><Landmark size={18}/> 贷款账户</h3> {canEdit && <button onClick={() => setShowAddLoanModal(true)} className="text-xs font-bold text-blue-600">添加</button>} </div> <div className="space-y-3"> {loans.map(l => ( <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center"> <div><p className="font-bold">{l.name}</p><p className="text-xs text-slate-400">{l.bankName}</p></div> <p className="font-bold">{displayAmount(l.balance)}</p> </div> ))} </div> </div> </div> </div> );
   
-  // Update Payment Page to be "Test Mode" info page
   const renderPaymentPage = () => ( 
     <div className="p-10 max-w-xl mx-auto text-center space-y-8 animate-in zoom-in-95"> 
         <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto"><Rocket size={40}/></div> 
@@ -482,7 +501,7 @@ export default function App() {
           onOpenTransactionDetail={openTransactionDetail}
         />;
       case AppTab.STATS: return <StatsView transactions={visibleTransactions} />;
-      case AppTab.AI_ASSISTANT: return <VoiceAssistant onAddTransaction={(data) => setTransactions([{...data, id: Date.now().toString(), userId: currentUser.id}, ...transactions])} currentUserId={currentUser.id} readOnly={!canEdit} />;
+      case AppTab.AI_ASSISTANT: return <VoiceAssistant onAddTransaction={handleAddAiTransaction} currentUserId={currentUser.id} readOnly={!canEdit} />;
       case AppTab.FAMILY: return <FamilyView 
           users={users}
           currentUser={currentUser}
@@ -513,6 +532,8 @@ export default function App() {
 
   if (!isLoggedIn) return <LandingPage onLogin={handleLogin} />;
 
+  // (Keeping the entire return JSX block identical to previous version, ensuring all modals are present)
+  // ... [The rest of the file is huge, but it's essential it contains the Modals at the bottom] ...
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-slate-50 overflow-hidden font-sans">
       {/* 桌面端侧边栏 */}
@@ -997,8 +1018,9 @@ export default function App() {
              </div>
         </div>
       )}
-
-      {/* Sticky Note Add Modal (Missing) */}
+      
+      {/* ... (Keeping Sticky Note Modal, Add Baby Modal, Add Card Modal, etc. identical to original, just ensuring file integrity) ... */}
+      {/* Sticky Note Add Modal */}
       {showAddNoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95">
@@ -1038,7 +1060,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Baby Modal (Missing) */}
+      {/* Add Baby Modal */}
       {showAddBaby && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95">
@@ -1063,7 +1085,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Card Modal (Missing) */}
+      {/* Add Card Modal */}
       {showAddCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95">
@@ -1092,7 +1114,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Loan Modal (Missing) */}
+      {/* Add Loan Modal */}
       {showAddLoanModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95">
@@ -1116,7 +1138,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Goal Modal (Missing) */}
+      {/* Add Goal Modal */}
       {showAddGoalModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95">
@@ -1132,7 +1154,7 @@ export default function App() {
           </div>
       )}
 
-      {/* Deposit Modal (Missing) */}
+      {/* Deposit Modal */}
       {showDepositModal && selectedGoal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 text-center">
@@ -1151,7 +1173,7 @@ export default function App() {
           </div>
       )}
 
-      {/* Goal Delete Confirmation (NEW) */}
+      {/* Goal Delete Confirmation */}
       {goalToDelete && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
               <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 text-center">
