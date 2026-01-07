@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Transaction, TransactionType, User } from '../types';
-import { TrendingUp, TrendingDown, User as UserIcon, CreditCard, ArrowRight, Sparkles, X } from './Icons';
+import { TrendingUp, TrendingDown, CreditCard, ArrowRight, X } from './Icons';
 
 interface Props {
   transaction: Transaction;
@@ -113,8 +112,16 @@ export const TransactionCard: React.FC<Props> = ({ transaction, user, onClick, o
           </div>
         </div>
       </div>
-      <div className={`font-bold text-lg ${amountColor} tabular-nums`}>
-        {hideAmount ? '****' : `${sign}${transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+      <div className={`text-right`}>
+        <div className={`font-bold text-lg ${amountColor} tabular-nums`}>
+            {hideAmount ? '****' : `${sign}${transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        </div>
+        {user && (
+            <div className="flex items-center justify-end gap-1.5 mt-1 opacity-60">
+                <span className="text-[10px] text-slate-500 font-medium">{user.name}</span>
+                <img src={user.avatar} alt={user.name} className="w-4 h-4 rounded-full bg-slate-100 border border-white shadow-sm" />
+            </div>
+        )}
       </div>
     </div>
   );

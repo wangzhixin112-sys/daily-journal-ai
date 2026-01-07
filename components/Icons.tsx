@@ -58,7 +58,8 @@ import {
   StickyNote,
   MessageSquare,
   PartyPopper,
-  Heart
+  Heart,
+  Calculator
 } from 'lucide-react';
 
 export {
@@ -120,5 +121,6 @@ export {
   StickyNote,
   MessageSquare,
   PartyPopper,
-  Heart
+  Heart,
+  Calculator
 };

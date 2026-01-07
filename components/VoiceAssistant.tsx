@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Loader2, Sparkles, CheckCircle2, Keyboard, Send, AlertCircle } from './Icons';
+import { Mic, Loader2, Sparkles, CheckCircle2, Keyboard, Send, AlertCircle, Lock } from './Icons';
 import { parseTransaction } from '../services/geminiService';
 import { Transaction, TransactionType } from '../types';
 
 interface Props {
   onAddTransaction: (data: Omit<Transaction, 'id' | 'userId'> & { babyName?: string, dueDate?: string }) => void;
   currentUserId: string;
+  readOnly?: boolean;
 }
 
 // Type definition for Web Speech API
@@ -15,7 +15,7 @@ interface IWindow extends Window {
   SpeechRecognition: any;
 }
 
-export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserId }) => {
+export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserId, readOnly = false }) => {
   const [mode, setMode] = useState<'VOICE' | 'TEXT'>('VOICE');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -100,6 +100,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
 
   const startRecording = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    if (readOnly) return;
     setSuccessResult(null);
     setTempTranscript('');
     
@@ -123,7 +124,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
   };
 
   const handleTextSubmit = async () => {
-    if (!textInput.trim()) return;
+    if (!textInput.trim() || readOnly) return;
     await processInput(textInput);
     setTextInput('');
   };
@@ -176,6 +177,18 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         default: return { color: 'text-slate-500', sign: '' };
       }
   };
+
+  if (readOnly) {
+      return (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-slate-400">
+              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <Lock size={32} className="text-slate-400" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-600 mb-2">暂无记账权限</h3>
+              <p className="text-sm text-center max-w-xs">您当前是“仅查看”模式，请联系家庭管理员开启编辑权限。</p>
+          </div>
+      );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 bg-gradient-to-b from-slate-50 to-white relative overflow-y-auto">
