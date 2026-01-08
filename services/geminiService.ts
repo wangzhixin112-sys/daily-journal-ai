@@ -1,26 +1,23 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AiParsingResult, TransactionType, Category } from "../types";
 
 // Helper to get dynamic client configuration
-// This is crucial for the "Test Version" to allow users to input their own keys/proxies at runtime
-// without needing to rebuild the app.
-const getClient = () => {
-    let apiKey = process.env.API_KEY;
-    let baseUrl = process.env.GEMINI_BASE_URL;
+const getClientConfig = () => {
+    // In Vite, environment variables need to start with VITE_
+    let apiKey = import.meta.env.VITE_API_KEY;
+    let apiUrl = import.meta.env.VITE_BAIDU_API_URL;
 
     // Try to get from LocalStorage (User overrides)
     if (typeof window !== 'undefined') {
         const storedKey = localStorage.getItem('gf_user_api_key');
         const storedUrl = localStorage.getItem('gf_user_base_url');
         if (storedKey) apiKey = storedKey;
-        if (storedUrl) baseUrl = storedUrl;
+        if (storedUrl) apiUrl = storedUrl;
     }
 
-    return new GoogleGenAI({ 
+    return {
         apiKey: apiKey,
-        // Add Base URL support for reverse proxy (Cloudflare/Nginx)
-        baseUrl: baseUrl || undefined 
-    });
+        apiUrl: apiUrl || "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie_speed"
+    };
 };
 
 // 本地规则解析器（作为 AI 的兜底方案）
@@ -89,10 +86,9 @@ const mockLocalParse = (text: string): AiParsingResult => {
 };
 
 export const parseTransaction = async (textInput: string, imageBase64?: string): Promise<AiParsingResult> => {
-  const ai = getClient();
-  
   // Check if we have a key (either env or stored)
-  const hasKey = process.env.API_KEY || (typeof window !== 'undefined' && localStorage.getItem('gf_user_api_key'));
+  const config = getClientConfig();
+  const hasKey = config.apiKey;
 
   if (!hasKey) {
       console.warn("No API Key configured, using local fallback.");
@@ -100,57 +96,70 @@ export const parseTransaction = async (textInput: string, imageBase64?: string):
   }
 
   try {
-    let contents: any = `Current Time: ${new Date().toISOString()}. Analyze this transaction.`;
-    
+    // 当前仅支持文本输入，图片输入使用本地兜底方案
     if (imageBase64) {
-        // Multimodal input
-        contents = [
-            {
-                inlineData: {
-                    mimeType: "image/jpeg",
-                    data: imageBase64
-                }
-            },
-            {
-                text: "Analyze this receipt/image. Extract the total amount, infer the category, determine the transaction type, and write a short note summary. Return JSON."
-            }
-        ];
-    } else {
-        // Text-only input
-        contents = `Current Time: ${new Date().toISOString()}. Analyze this transaction text: "${textInput}"`;
+      console.warn("Image input is not supported with Baidu API, using local fallback.");
+      return mockLocalParse(textInput);
     }
 
-    const response = await ai.models.generateContent({
-      model: imageBase64 ? 'gemini-2.5-flash-image' : 'gemini-3-flash-preview', // Use vision model for images
-      contents: contents,
-      config: {
-        systemInstruction: "You are a family accountant. Extract transaction details into JSON.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            amount: { type: Type.NUMBER },
-            type: { type: Type.STRING, enum: [TransactionType.EXPENSE, TransactionType.INCOME, TransactionType.DEBT, TransactionType.REPAYMENT] },
-            category: { type: Type.STRING, enum: Object.values(Category) },
-            note: { type: Type.STRING },
-            date: { type: Type.STRING },
-            dueDate: { type: Type.STRING, nullable: true },
-            babyName: { type: Type.STRING, nullable: true }
-          },
-          required: ["amount", "type", "category", "note", "date"]
+    // 百度文心一言API请求体
+    const requestBody = {
+      messages: [
+        {
+          role: "system",
+          content: "你是一个家庭会计师，需要根据用户提供的交易文本提取交易详情。请严格按照JSON格式返回，不要添加任何额外的解释或说明。"
+        },
+        {
+          role: "user",
+          content: `Current Time: ${new Date().toISOString()}. Analyze this transaction text: "${textInput}". Extract the following fields: amount (number), type (EXPENSE/INCOME/DEBT/REPAYMENT), category (one of: ${Object.values(Category).join(', ')}), note (string), date (ISO string). Return JSON only.`
         }
-      }
+      ],
+      temperature: 0.3
+    };
+
+    // 构建完整的API请求URL
+    const apiUrl = `${config.apiUrl}?access_token=${config.apiKey}`;
+
+    // 调用百度文心一言API
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody)
     });
 
-    const result = response.text ? JSON.parse(response.text) : null;
-    if (result) {
+    if (!response.ok) {
+      throw new Error(`API request failed with status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // 百度文心一言API返回的result字段已经是直接的文本，不需要parse
+    const resultText = data.result || "";
+    
+    // 从响应文本中提取JSON
+    let result = null;
+    try {
+      // 尝试直接解析result字段
+      result = JSON.parse(resultText);
+    } catch (parseError) {
+      console.warn("Failed to parse JSON from Baidu API response, trying to extract JSON.", parseError);
+      // 尝试从文本中提取JSON（如果有额外说明）
+      const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        result = JSON.parse(jsonMatch[0]);
+      }
+    }
+
+    if (result && result.amount && result.type && result.category && result.note && result.date) {
         // Ensure date is valid ISO string if AI returns something else
         if (!result.date || isNaN(Date.parse(result.date))) {
             result.date = new Date().toISOString();
         }
         return result as AiParsingResult;
     }
-    throw new Error("Empty response from Gemini");
+    throw new Error("Invalid response from Baidu API");
   } catch (e) {
     console.warn("AI Parsing failed, using local fallback.", e);
     return mockLocalParse(textInput || "无法识别");
@@ -158,22 +167,47 @@ export const parseTransaction = async (textInput: string, imageBase64?: string):
 };
 
 export const getFinancialAdvice = async (summary: string): Promise<string> => {
-  const ai = getClient();
-  const hasKey = process.env.API_KEY || (typeof window !== 'undefined' && localStorage.getItem('gf_user_api_key'));
+  const config = getClientConfig();
+  const hasKey = config.apiKey;
   
   if (!hasKey) return "AI 助手未连接（请配置 API Key）。建议您：1. 检查每月固定支出；2. 为大额消费设定预算。";
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: summary,
-      config: {
-        systemInstruction: "你是一个贴心的家庭理财顾问。根据用户的收支数据，给出简短、亲切、符合中国国情的理财或省钱建议。控制在100字以内，语气要鼓励和正向。",
-      }
+    // 百度文心一言API请求体
+    const requestBody = {
+      messages: [
+        {
+          role: "system",
+          content: "你是一个贴心的家庭理财顾问。根据用户的收支数据，给出简短、亲切、符合中国国情的理财或省钱建议。控制在100字以内，语气要鼓励和正向。"
+        },
+        {
+          role: "user",
+          content: summary
+        }
+      ],
+      temperature: 0.3
+    };
+
+    // 构建完整的API请求URL
+    const apiUrl = `${config.apiUrl}?access_token=${config.apiKey}`;
+
+    // 调用百度文心一言API
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody)
     });
-    return response.text || "AI 暂时繁忙，请稍后再试。";
+
+    if (!response.ok) {
+      throw new Error(`API request failed with status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result || "AI 暂时繁忙，请稍后再试。";
   } catch (e) {
-    console.error("Gemini Advice Error:", e);
+    console.error("Baidu Advice Error:", e);
     return "AI 暂时繁忙，建议您先关注本月的大额支出项，看看是否有缩减空间。";
   }
 };
