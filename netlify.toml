@@ -1,0 +1,30 @@
+# netlify.toml
+
+# 构建设置
+[build]
+  # 构建命令
+  command = "npm run build"
+  # 发布目录
+  publish = "dist"
+  # 基础目录
+  base = "."
+
+# 重定向规则（处理单页应用路由）
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = true
+  
+# 响应式设计优化
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # 启用浏览器缓存
+    Cache-Control = "public, max-age=31536000, immutable"
+    # 确保正确的Content-Type
+    Content-Type = "text/html; charset=utf-8"
+
+# 环境变量（可选）
+[context.production.environment]
+  VITE_AI_MODEL = "bce-v3/ALTAK-p6Mh4sderuFthCaIv3W7c/44dd56f122557bed4a92adc4022a15060df95198"
