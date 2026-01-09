@@ -29,12 +29,30 @@ export enum Category {
   DAILY = '日用百货',
   ALLOWANCE = '零花钱',
   TOYS = '玩具绘本',
+  DEPOSIT = '存入愿望',
   OTHER = '其他杂项'
 }
 
 export interface Permissions {
   canView: boolean;
   canEdit: boolean;
+  // 细粒度权限控制
+  modules?: {
+    ledger?: boolean;  // 账本流水
+    baby?: boolean;    // 宝宝档案
+    assets?: boolean;  // 资产账户
+    goals?: boolean;   // 心愿目标
+    stats?: boolean;   // 统计报表
+    ai?: boolean;      // AI记账
+  };
+  // 更细粒度的编辑权限
+  editPermissions?: {
+    ownTransactionsOnly?: boolean;  // 只能编辑自己的交易
+    canAddTransactions?: boolean;   // 可以添加交易
+    canDeleteTransactions?: boolean; // 可以删除交易
+    canEditBabyInfo?: boolean;      // 可以编辑宝宝信息
+    canManageMembers?: boolean;     // 可以管理成员
+  };
 }
 
 export interface User {
@@ -51,6 +69,12 @@ export interface Baby {
   name: string;
   avatar: string;
   birthDate?: string;
+  gender?: 'male' | 'female' | 'other';
+  bloodType?: string;
+  allergies?: string;
+  height?: number;
+  weight?: number;
+  notes?: string;
 }
 
 export interface CreditCardAccount {
@@ -109,6 +133,7 @@ export interface AiParsingResult {
   note: string;
   date?: string;
   dueDate?: string;
+  babyId?: string;
   babyName?: string;
 }
 

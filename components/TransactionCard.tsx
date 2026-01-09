@@ -99,17 +99,14 @@ export const TransactionCard: React.FC<Props> = ({ transaction, user, onClick, o
             )}
           </div>
           
-          <div className="flex items-center gap-2 mt-1">
-             <span className="text-xs text-slate-400 font-medium">
-               {dateStr}
-             </span>
-             {transaction.note && (
-                <>
-                  <span className="w-0.5 h-2.5 bg-slate-200 rounded-full"></span>
-                  <span className="text-xs text-slate-500 max-w-[120px] truncate">{transaction.note}</span>
-                </>
-             )}
-          </div>
+          <div className="flex flex-col gap-1 mt-1">
+               <span className="text-xs text-slate-400 font-medium">
+                 {dateStr}
+               </span>
+               {transaction.note && (
+                  <span className="text-xs text-slate-500 max-w-[150px] sm:max-w-[120px] truncate">{transaction.note}</span>
+               )}
+            </div>
         </div>
       </div>
       <div className={`text-right`}>

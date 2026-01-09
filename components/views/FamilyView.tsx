@@ -75,6 +75,14 @@ export const FamilyView: React.FC<FamilyViewProps> = ({
                         const canManage = isFamilyAdmin && !isCurrentUser;
                         const roleLabel = u.isFamilyAdmin ? '管理员' : (u.permissions?.canEdit ? '编辑者' : '观察员');
                         const roleColor = u.isFamilyAdmin ? 'bg-indigo-100 text-indigo-600' : (u.permissions?.canEdit ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500');
+                        const permissionModules = u.permissions?.modules || {
+                            ledger: true,
+                            baby: true,
+                            assets: true,
+                            goals: true,
+                            stats: true,
+                            ai: true
+                        };
 
                         return (
                             <div key={u.id} className={`flex items-center gap-4 p-3 rounded-2xl transition-all ${isCurrentUser ? 'bg-indigo-50/50 border border-indigo-100' : 'hover:bg-slate-50'}`}>
@@ -95,6 +103,17 @@ export const FamilyView: React.FC<FamilyViewProps> = ({
                                             </button>
                                         )}
                                     </div>
+                                    {/* 模块权限显示 */}
+                                    {!isCurrentUser && (
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {permissionModules.ledger && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">账本</span>}
+                                            {permissionModules.baby && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">宝宝</span>}
+                                            {permissionModules.assets && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">资产</span>}
+                                            {permissionModules.goals && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">心愿</span>}
+                                            {permissionModules.stats && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">报表</span>}
+                                            {permissionModules.ai && <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">AI</span>}
+                                        </div>
+                                    )}
                                 </div>
                                 {isFamilyAdmin && !isCurrentUser && (
                                     <button onClick={() => onDeleteMember(u)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16} /></button>

@@ -24,6 +24,7 @@ import {
   PiggyBank, ShieldCheck, Target, Share2, Rocket
 } from './components/Icons';
 import { api } from './services/api'; // Import the new API service
+import { ToastNotification } from './components/ToastNotification';
 
 // Helper Hook for Sticky State (Local Storage)
 function useStickyState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -60,7 +61,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   
   // Data State
-  const [babies, setBabies] = useState<Baby[]>(MOCK_BABIES);
+  const [babies, setBabies] = useStickyState<Baby[]>('gf_babies', MOCK_BABIES);
   const [goals, setGoals] = useState<SavingsGoal[]>(MOCK_GOALS);
   const [creditCards, setCreditCards] = useState<CreditCardAccount[]>(MOCK_CREDIT_CARDS);
   const [loans, setLoans] = useState<LoanAccount[]>(MOCK_LOANS);
@@ -136,6 +137,26 @@ export default function App() {
   const [loanToDelete, setLoanToDelete] = useState<LoanAccount | null>(null);
   const [noteToDelete, setNoteToDelete] = useState<FamilyNote | null>(null);
   
+  // Toast Notification State
+  const [toast, setToast] = useState({
+    show: false,
+    message: '',
+    type: 'success' as 'success' | 'error' | 'info' | 'warning'
+  });
+  
+  // Show Toast Notification
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 3000);
+  };
+  
+  // Close Toast Notification
+  const closeToast = () => {
+    setToast(prev => ({ ...prev, show: false }));
+  };
+  
   // Permissions derived state
   const isFamilyAdmin = currentUser.isFamilyAdmin;
   const canEdit = isFamilyAdmin || (currentUser.permissions?.canEdit ?? false);
@@ -192,7 +213,23 @@ export default function App() {
                 permissions: { 
                     ...u.permissions, 
                     canEdit: !currentEdit,
-                    canView: true 
+                    canView: true,
+                    // 初始化细粒度权限
+                    modules: u.permissions?.modules || {
+                        ledger: true,
+                        baby: true,
+                        assets: true,
+                        goals: true,
+                        stats: true,
+                        ai: true
+                    },
+                    editPermissions: u.permissions?.editPermissions || {
+                        ownTransactionsOnly: false,
+                        canAddTransactions: !currentEdit,
+                        canDeleteTransactions: !currentEdit,
+                        canEditBabyInfo: false,
+                        canManageMembers: false
+                    }
                 } 
             };
         }
@@ -253,8 +290,33 @@ export default function App() {
       };
       setTransactions([newTx, ...transactions]);
       api.saveTransaction(newTx); // Sync to API
+      
+      // Update card or loan balance based on transaction type
+      if (newTx.cardId) {
+          setCreditCards(creditCards.map(card => {
+              if (card.id === newTx.cardId) {
+                  // For credit cards: DEBT increases balance, REPAYMENT decreases balance
+                  const balanceChange = newTx.type === TransactionType.DEBT ? newTx.amount : -newTx.amount;
+                  return { ...card, balance: card.balance + balanceChange };
+              }
+              return card;
+          }));
+      }
+      
+      if (newTx.loanId) {
+          setLoans(loans.map(loan => {
+              if (loan.id === newTx.loanId) {
+                  // For loans: DEBT increases balance, REPAYMENT decreases balance
+                  const balanceChange = newTx.type === TransactionType.DEBT ? newTx.amount : -newTx.amount;
+                  return { ...loan, balance: loan.balance + balanceChange };
+              }
+              return loan;
+          }));
+      }
+      
       setShowAddModal(false);
       setAddForm({ amount: '', type: TransactionType.EXPENSE, category: Category.FOOD, note: '', date: new Date().toISOString().split('T')[0], dueDate: '', babyId: '', cardId: '', loanId: '' });
+      showToast('记账成功！', 'success');
   };
   
   // Voice/AI Transaction Add
@@ -262,6 +324,31 @@ export default function App() {
       const newTx = { ...data, id: Date.now().toString(), userId: currentUser.id };
       setTransactions([newTx, ...transactions]);
       api.saveTransaction(newTx); // Sync to API
+      
+      // Update card or loan balance based on transaction type
+      if (newTx.cardId) {
+          setCreditCards(creditCards.map(card => {
+              if (card.id === newTx.cardId) {
+                  // For credit cards: DEBT increases balance, REPAYMENT decreases balance
+                  const balanceChange = newTx.type === TransactionType.DEBT ? newTx.amount : -newTx.amount;
+                  return { ...card, balance: card.balance + balanceChange };
+              }
+              return card;
+          }));
+      }
+      
+      if (newTx.loanId) {
+          setLoans(loans.map(loan => {
+              if (loan.id === newTx.loanId) {
+                  // For loans: DEBT increases balance, REPAYMENT decreases balance
+                  const balanceChange = newTx.type === TransactionType.DEBT ? newTx.amount : -newTx.amount;
+                  return { ...loan, balance: loan.balance + balanceChange };
+              }
+              return loan;
+          }));
+      }
+      
+      showToast('AI记账成功！', 'success');
   }
 
   const openBabyExpenseModal = () => {
@@ -1224,6 +1311,14 @@ export default function App() {
               </div>
           </div>
       )}
+      
+      {/* Toast Notification */}
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={closeToast}
+        show={toast.show}
+      />
     </div>
   );
 }

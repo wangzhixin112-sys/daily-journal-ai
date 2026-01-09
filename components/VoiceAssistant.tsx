@@ -168,6 +168,7 @@ export const VoiceAssistant: React.FC<Props> = ({ onAddTransaction, currentUserI
         note: result.note,
         date: result.date || new Date().toISOString(),
         dueDate: result.dueDate,
+        babyId: result.babyId,
         babyName: result.babyName
       });
 

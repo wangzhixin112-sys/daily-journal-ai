@@ -366,7 +366,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     {goals.map(goal => {
                         const percent = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
                         return (
-                            <div key={goal.id} onClick={() => { if(canEdit) { onSelectGoal(goal); } }} className="min-w-[160px] w-[160px] bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex-shrink-0 snap-start relative overflow-hidden group cursor-pointer active:scale-95 transition-all">
+                            <div key={goal.id} onClick={() => { if(canEdit) { onSelectGoal(goal); } }} className="min-w-[140px] w-[140px] sm:min-w-[160px] sm:w-[160px] bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex-shrink-0 snap-start relative overflow-hidden group cursor-pointer active:scale-95 transition-all">
                                 {canEdit && (
                                     <button 
                                         onClick={(e) => { 
