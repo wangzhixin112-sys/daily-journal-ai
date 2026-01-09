@@ -1,22 +1,27 @@
 // Simple HTTP server for serving the built application
 import { createServer } from 'http';
-import { readFile, readdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const DIST_DIR = join(__dirname, 'dist');
 
 // Create server
 const server = createServer(async (req, res) => {
     console.log(`${req.method} ${req.url}`);
     
     // Determine the file path
-    let filePath = req.url === '/' ? '/index.html' : req.url;
+    let filePath = req.url;
     
-    // Add file extension if not present
-    if (!extname(filePath)) {
+    // If root path, serve index.html
+    if (filePath === '/') {
+        filePath = '/index.html';
+    }
+    // If no extension, it's a SPA route, serve index.html
+    else if (!extname(filePath)) {
         filePath = '/index.html';
     }
     
@@ -37,8 +42,8 @@ const server = createServer(async (req, res) => {
     const contentType = mimeTypes[extname(filePath)] || 'application/octet-stream';
     
     try {
-        // Read the file
-        const content = await readFile(join(__dirname, filePath), 'utf8');
+        // Read the file from dist directory
+        const content = await readFile(join(DIST_DIR, filePath), 'utf8');
         
         // Set headers and send response
         res.writeHead(200, { 'Content-Type': contentType });
@@ -46,10 +51,19 @@ const server = createServer(async (req, res) => {
     } catch (error) {
         // Handle 404 errors
         if (error.code === 'ENOENT') {
-            res.writeHead(404, { 'Content-Type': 'text/html' });
-            res.end('<h1>404 Not Found</h1>', 'utf-8');
+            console.error(`File not found: ${join(DIST_DIR, filePath)}`);
+            // For SPA, serve index.html even if file not found
+            try {
+                const indexContent = await readFile(join(DIST_DIR, '/index.html'), 'utf8');
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(indexContent, 'utf-8');
+            } catch (indexError) {
+                res.writeHead(404, { 'Content-Type': 'text/html' });
+                res.end('<h1>404 Not Found</h1>', 'utf-8');
+            }
         } else {
             // Handle other errors
+            console.error(`Server error: ${error}`);
             res.writeHead(500);
             res.end(`Server Error: ${error.code}`);
         }
@@ -57,7 +71,8 @@ const server = createServer(async (req, res) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}/`);
+    console.log(`Serving files from: ${DIST_DIR}`);
 });
